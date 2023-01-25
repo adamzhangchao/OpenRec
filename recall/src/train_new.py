@@ -520,10 +520,10 @@ if __name__ == '__main__':
         maxlen = 20
         test_iter = 1000
     
-    train_file = path + args.dataset + '_recall_train.txt'
-    valid_file = path + args.dataset + '_recall_valid.txt'
-    test_file = path + args.dataset + '_recall_test.txt'
-    cate_file = path + args.dataset + '_item_cate_kv.txt'
+    train_file = os.path.join(path, args.dataset + '_recall_train.txt')
+    valid_file = os.path.join(path, args.dataset + '_recall_valid.txt')
+    test_file = os.path.join(path, args.dataset + '_recall_test.txt')
+    cate_file = os.path.join(path, args.dataset + '_item_cate_kv.txt')
     dataset = args.dataset
 
     if args.p == 'train':
