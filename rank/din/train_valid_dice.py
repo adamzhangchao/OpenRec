@@ -106,7 +106,7 @@ def _test(sess, model):
   auc_sum = 0.0
   score_arr = []
   predicted_users_num = 0
-  print "test sub items"
+  print("test sub items")
   for _, uij in DataInputTest(test_set, predict_batch_size):
     if predicted_users_num >= predict_users_num:
         break
