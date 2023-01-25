@@ -15,16 +15,16 @@ rank_dict = {}
 rank_predict_path = "../data/{}_rank_from_recall_predict_res.txt".format(name)
 with open(rank_predict_path, "r") as f:
     for line in f.readlines():
-        struct = line.split(";")
+        struct = line.split(",")
         reviewerID = int(struct[0])
         candidate = int(struct[1])
-        score = int(struct[2])
+        score = float(struct[2])
         if reviewerID not in rank_dict:
             rank_dict[reviewerID] = []
         rank_dict[reviewerID].append([candidate, score])
 
 all_hitrate = 0
-for key, value in recall_dict.items():`
+for key, value in recall_dict.items():
     struct = recall_dict[key]
     candidates = struct[0]
     target_list = struct[1]
@@ -40,3 +40,4 @@ for key, value in recall_dict.items():`
 
 print(all_hitrate)
 print(len(rank_dict))
+print("hitrate:", float(all_hitrate) / len(rank_dict))
