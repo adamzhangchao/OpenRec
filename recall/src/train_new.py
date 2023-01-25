@@ -514,7 +514,7 @@ if __name__ == '__main__':
         maxlen = 20
         test_iter = 1000
     elif args.dataset == 'Electronics':
-        path = args.suffix
+        path = args.prefix
         item_count = 63002
         batch_size = 128
         maxlen = 20
