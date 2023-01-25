@@ -34,7 +34,6 @@ class DataIterator:
             for line in f:
                 conts = line.strip().split(',')
                 user_id = int(conts[0])
-                item_id = int(conts[1])
                 item_id_list = [int(val) for val in conts[1].split(";")]
                 time_stamp_list = [int(val) for val in conts[2].split(";")]
                 self.users.add(user_id)
