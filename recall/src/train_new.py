@@ -466,7 +466,7 @@ def predict(
         model.restore(sess, best_model_path)
         
         predict_data = DataIterator(predict_file, batch_size, maxlen, train_flag=3)
-        metrics = evaluate_full_predict(sess, test_data, model, best_model_path, batch_size, item_cate_map, predict_res_path, save=False, coef=args.coef)
+        metrics = evaluate_full_predict(sess, predict_data, model, best_model_path, batch_size, item_cate_map, predict_res_path, save=False, coef=args.coef)
         print(', '.join(['test ' + key + ': %.6f' % value for key, value in metrics.items()]))
 
 
