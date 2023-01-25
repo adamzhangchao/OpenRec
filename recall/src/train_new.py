@@ -29,7 +29,7 @@ parser.add_argument('--learning_rate', type=float, default=0.001, help='')
 parser.add_argument('--max_iter', type=int, default=1000, help='(k)')
 parser.add_argument('--patience', type=int, default=50)
 parser.add_argument('--coef', default=None)
-parser.add_argument('--topN', type=int, default=100)
+parser.add_argument('--topN', type=int, default=50, help='train:topN=50|predict:topK=100')
 parser.add_argument('--extr_name', type=str, default="Electronics")
 parser.add_argument('--prefix', type=str, default="../../data")
 
