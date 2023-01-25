@@ -1,1 +1,4 @@
 data/*.json
+recall/src/__pycache__
+recall/src/best_model
+recall/src/runs
