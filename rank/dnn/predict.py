@@ -6,8 +6,7 @@ import numpy as np
 import tensorflow as tf
 import sys
 from input import DataInput, DataInputTest
-#from model import Model
-from model_dice import Model
+from model import Model
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 random.seed(1234)
@@ -15,8 +14,9 @@ np.random.seed(1234)
 tf.set_random_seed(1234)
 
 train_batch_size = 32
-valid_batch_size = 512
 test_batch_size = 512
+valid_batch_size = 512
+
 predict_batch_size = 512
 predict_users_num = 1000
 predict_ads_num = 63002
@@ -26,6 +26,7 @@ cate_count = 705
 
 name = "Electronics"
 data_prefix = "../../data"
+
 with open(os.path.join(data_prefix, '{}_rank_from_recall_predict_data.pkl'.format(name)), 'rb') as f:
   predict_set = pickle.load(f)
   cate_list = pickle.load(f)
@@ -84,6 +85,12 @@ def _eval_test(sess, model):
     auc_sum += auc_ * len(uij[0])
   test_gauc = auc_sum / len(test_set)
   Auc = calc_auc(score_arr)
+  """
+  global best_auc
+  if best_auc < test_gauc:
+    best_auc = test_gauc
+    model.save(sess, 'save_path/ckpt')
+  """
   return test_gauc, Auc
 
 def _eval_valid(sess, model):
@@ -93,13 +100,13 @@ def _eval_valid(sess, model):
     auc_, score_ = model.eval(sess, uij)
     score_arr += _auc_arr(score_)
     auc_sum += auc_ * len(uij[0])
-  test_gauc = auc_sum / len(valid_set)
+  valid_gauc = auc_sum / len(valid_set)
   Auc = calc_auc(score_arr)
   global best_auc
-  if best_auc < test_gauc:
-    best_auc = test_gauc
+  if best_auc < valid_gauc:
+    best_auc = valid_gauc
     model.save(sess, 'save_path/ckpt')
-  return test_gauc, Auc
+  return valid_gauc, Auc
 
 def _predict(sess, model):
   auc_sum = 0.0
@@ -113,38 +120,26 @@ def _predict(sess, model):
         target_item_id = uij[1][i]
         score = score_[i][0]
         record_list.append([reviewerID, target_item_id, score])
-  with open(os.path.join(data_prefix, "{}_rank_from_recall_predict_res_din.txt".format(name)), "w") as f:
+  with open(os.path.join(data_prefix, "{}_rank_from_recall_predict_res_dnn.txt".format(name)), "w") as f:
     for record in record_list:
       f.write("{},{},{}\n".format(record[0], record[1], record[2]))
-
-def _test(sess, model):
-  auc_sum = 0.0
-  score_arr = []
-  predicted_users_num = 0
-  print("test sub items")
-  for _, uij in DataInputTest(test_set, predict_batch_size):
-    if predicted_users_num >= predict_users_num:
-        break
-    score_ = model.test(sess, uij)
-    score_arr.append(score_)
-    predicted_users_num += predict_batch_size
-  return score_[0]
 
 gpu_options = tf.GPUOptions(allow_growth=True)
 with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
 
-  model = Model(user_count, item_count, cate_count, cate_list, predict_batch_size, predict_ads_num)
-  #sess.run(tf.global_variables_initializer())
-  #sess.run(tf.local_variables_initializer())
+  model = Model(user_count, item_count, cate_count, cate_list)
+
   model.restore(sess, "save_path/ckpt")
   _predict(sess, model)
-
-  #print('valid_gauc: %.4f\t valid_auc: %.4f' % _eval_valid(sess, model))
-  sys.stdout.flush()
   exit()
+  sess.run(tf.global_variables_initializer())
+  sess.run(tf.local_variables_initializer())
+
+  print('valid_gauc: %.4f\t valid_auc: %.4f' % _eval_valid(sess, model))
+  sys.stdout.flush()
   lr = 1.0
   start_time = time.time()
-  for _ in range(50):
+  for _ in range(20):
 
     random.shuffle(train_set)
 
@@ -170,7 +165,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
     sys.stdout.flush()
     model.global_epoch_step_op.eval()
 
-  print("valid best test_gauc:",best_auc)
+  print('best valid_gauc:', best_auc)
   sys.stdout.flush()
   model.restore(sess, "save_path/ckpt")
   print('test_gauc: %.4f\t test_auc: %.4f' % _eval_test(sess, model))
