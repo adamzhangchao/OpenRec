@@ -317,7 +317,8 @@ def get_exp_name(dataset, model_type, batch_size, lr, maxlen, save=True):
     exp_name = para_name + '_' + extr_name
 
     while os.path.exists('runs/' + exp_name) and save:
-        flag = input('The exp name already exists. Do you want to cover? (y/n)')
+        #flag = input('The exp name already exists. Do you want to cover? (y/n)')
+        flag = 'Y'
         if flag == 'y' or flag == 'Y':
             shutil.rmtree('runs/' + exp_name)
             break
