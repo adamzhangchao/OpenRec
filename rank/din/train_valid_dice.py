@@ -126,7 +126,7 @@ with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
   sys.stdout.flush()
   lr = 1.0
   start_time = time.time()
-  for _ in range(50):
+  for _ in range(10):
 
     random.shuffle(train_set)
 

@@ -144,7 +144,7 @@ class CapsuleNetwork(tf.layers.Layer):
         if self.bilinear_type > 0:
             capsule_weight = tf.stop_gradient(tf.zeros([get_shape(item_his_emb)[0], self.num_interest, self.seq_len]))
         else:
-            capsule_weight = tf.stop_gradient(tf.truncated_normal([get_shape(item_his_emb)[0], self.num_interest, self.seq_len], stddev=1.0))
+            capsule_weight = tf.stop_gradient(tf.truncated_normal([get_shape(item_his_emb)[0], self.num_interest, self.seq_len], stddev=1.0, seed=19))
 
         for i in range(3):
             atten_mask = tf.tile(tf.expand_dims(mask, axis=1), [1, self.num_interest, 1])
