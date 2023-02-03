@@ -34,13 +34,14 @@ class DataIterator:
             for line in f:
                 conts = line.strip().split(',')
                 user_id = int(conts[0])
-                item_id = int(conts[1])
-                time_stamp = int(conts[2])
+                item_id_list = [int(val) for val in conts[1].split(";")]
+                time_stamp_list = [int(val) for val in conts[2].split(";")]
                 self.users.add(user_id)
-                self.items.add(item_id)
-                if user_id not in self.graph:
-                    self.graph[user_id] = []
-                self.graph[user_id].append((item_id, time_stamp))
+                self.graph[user_id] = []
+                for item_id, time_stamp in zip(item_id_list, time_stamp_list):
+                    self.items.add(item_id)
+                    self.graph[user_id].append((item_id, time_stamp))
+
         for user_id, value in self.graph.items():
             value.sort(key=lambda x: x[1])
             self.graph[user_id] = [x[0] for x in value]

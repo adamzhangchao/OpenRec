@@ -12,23 +12,26 @@ import numpy as np
 
 import faiss
 import tensorflow as tf
+
 from data_iterator import DataIterator
 from model import *
 from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-p', type=str, default='train', help='train | test')
-parser.add_argument('--dataset', type=str, default='book', help='book | taobao')
+parser.add_argument('-p', type=str, default='train', help='train | test | predict')
+parser.add_argument('--dataset', type=str, default='Electronics', help='Electronics | book | taobao')
 parser.add_argument('--random_seed', type=int, default=19)
 parser.add_argument('--embedding_dim', type=int, default=64)
 parser.add_argument('--hidden_size', type=int, default=64)
-parser.add_argument('--num_interest', type=int, default=4)
-parser.add_argument('--model_type', type=str, default='none', help='DNN | GRU4REC | ..')
+parser.add_argument('--num_interest', type=int, default=2)
+parser.add_argument('--model_type', type=str, default='MIND', help='DNN | GRU4REC | ..')
 parser.add_argument('--learning_rate', type=float, default=0.001, help='')
 parser.add_argument('--max_iter', type=int, default=1000, help='(k)')
 parser.add_argument('--patience', type=int, default=50)
 parser.add_argument('--coef', default=None)
-parser.add_argument('--topN', type=int, default=50)
+parser.add_argument('--topN', type=int, default=50, help='train:topN=50|predict:topK=100')
+parser.add_argument('--extr_name', type=str, default="Electronics")
+parser.add_argument('--prefix', type=str, default="../../data")
 
 best_metric = 0
 
@@ -168,6 +171,126 @@ def evaluate_full(sess, test_data, model, model_path, batch_size, item_cate_map,
     if save:
         return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate}
     return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate, 'diversity': diversity}
+    
+def evaluate_full_predict(sess, test_data, model, model_path, batch_size, item_cate_map, predict_res_path, save=True, coef=None):
+    topN = args.topN
+
+    item_embs = model.output_item(sess)
+
+    res = faiss.StandardGpuResources()
+    flat_config = faiss.GpuIndexFlatConfig()
+    flat_config.device = 0
+
+    try:
+        gpu_index = faiss.GpuIndexFlatIP(res, args.embedding_dim, flat_config)
+        gpu_index.add(item_embs)
+    except Exception as e:
+        return {}
+
+    total = 0
+    total_recall = 0.0
+    total_ndcg = 0.0
+    total_hitrate = 0
+    total_map = 0.0
+    total_diversity = 0.0
+    f = open(predict_res_path, "w")
+    for src, tgt in test_data:
+        nick_id, item_id, hist_item, hist_mask = prepare_data(src, tgt)
+
+        user_embs = model.output_user(sess, [hist_item, hist_mask])
+        batch_index = 0
+
+        if len(user_embs.shape) == 2:
+            D, I = gpu_index.search(user_embs, topN)
+            for i, iid_list in enumerate(item_id):
+                recall = 0
+                dcg = 0.0
+                true_item_set = set(iid_list)
+                for no, iid in enumerate(I[i]):
+                    if iid in true_item_set:
+                        recall += 1
+                        dcg += 1.0 / math.log(no+2, 2)
+                idcg = 0.0
+                for no in range(recall):
+                    idcg += 1.0 / math.log(no+2, 2)
+                total_recall += recall * 1.0 / len(iid_list)
+                if recall > 0:
+                    total_ndcg += dcg / idcg
+                    total_hitrate += 1
+                if not save:
+                    total_diversity += compute_diversity(I[i], item_cate_map)
+        else:
+            ni = user_embs.shape[1]
+            user_embs = np.reshape(user_embs, [-1, user_embs.shape[-1]])
+            D, I = gpu_index.search(user_embs, topN)
+            for i, iid_list in enumerate(item_id):
+                recall = 0
+                dcg = 0.0
+                item_list_set = set()
+                item_cor_list = []
+                if coef is None:
+                    item_list = list(zip(np.reshape(I[i*ni:(i+1)*ni], -1), np.reshape(D[i*ni:(i+1)*ni], -1)))
+                    item_list.sort(key=lambda x:x[1], reverse=True)
+                    for j in range(len(item_list)):
+                        if item_list[j][0] not in item_list_set and item_list[j][0] != 0:
+                            item_list_set.add(item_list[j][0])
+                            item_cor_list.append(item_list[j][0])
+                            if len(item_list_set) >= topN:
+                                break
+                else:
+                    origin_item_list = list(zip(np.reshape(I[i*ni:(i+1)*ni], -1), np.reshape(D[i*ni:(i+1)*ni], -1)))
+                    origin_item_list.sort(key=lambda x:x[1], reverse=True)
+                    item_list = []
+                    tmp_item_set = set()
+                    for (x, y) in origin_item_list:
+                        if x not in tmp_item_set and x in item_cate_map:
+                            item_list.append((x, y, item_cate_map[x]))
+                            tmp_item_set.add(x)
+                    cate_dict = defaultdict(int)
+                    for j in range(topN):
+                        max_index = 0
+                        max_score = item_list[0][1] - coef * cate_dict[item_list[0][2]]
+                        for k in range(1, len(item_list)):
+                            if item_list[k][1] - coef * cate_dict[item_list[k][2]] > max_score:
+                                max_index = k
+                                max_score = item_list[k][1] - coef * cate_dict[item_list[k][2]]
+                            elif item_list[k][1] < max_score:
+                                break
+                        item_list_set.add(item_list[max_index][0])
+                        item_cor_list.append(item_list[max_index][0])
+                        cate_dict[item_list[max_index][2]] += 1
+                        item_list.pop(max_index)
+
+                hist_item_str = ";".join([str(val) for val in hist_item[batch_index]])
+                predict_item_str = ";".join([str(val) for val in item_cor_list])
+                true_item_str = ";".join([str(val) for val in iid_list])
+                f.write("{},{},{},{}\n".format(nick_id[batch_index], hist_item_str, predict_item_str, true_item_str))
+                batch_index += 1
+                true_item_set = set(iid_list)
+                for no, iid in enumerate(item_cor_list):
+                    if iid in true_item_set:
+                        recall += 1
+                        dcg += 1.0 / math.log(no+2, 2)
+                idcg = 0.0
+                for no in range(recall):
+                    idcg += 1.0 / math.log(no+2, 2)
+                total_recall += recall * 1.0 / len(iid_list)
+                if recall > 0:
+                    total_ndcg += dcg / idcg
+                    total_hitrate += 1
+                if not save:
+                    total_diversity += compute_diversity(list(item_list_set), item_cate_map)
+        
+        total += len(item_id)
+    
+    recall = total_recall / total
+    ndcg = total_ndcg / total
+    hitrate = total_hitrate * 1.0 / total
+    diversity = total_diversity * 1.0 / total
+
+    if save:
+        return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate}
+    return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate, 'diversity': diversity}
 
 def get_model(dataset, model_type, item_count, batch_size, maxlen):
     if model_type == 'DNN': 
@@ -175,7 +298,8 @@ def get_model(dataset, model_type, item_count, batch_size, maxlen):
     elif model_type == 'GRU4REC': 
         model = Model_GRU4REC(item_count, args.embedding_dim, args.hidden_size, batch_size, maxlen)
     elif model_type == 'MIND':
-        relu_layer = True if dataset == 'book' else False
+        #relu_layer = True if dataset == 'book' else False
+        relu_layer = False
         model = Model_MIND(item_count, args.embedding_dim, args.hidden_size, batch_size, args.num_interest, maxlen, relu_layer=relu_layer)
     elif model_type == 'ComiRec-DR':
         model = Model_ComiRec_DR(item_count, args.embedding_dim, args.hidden_size, batch_size, args.num_interest, maxlen)
@@ -187,17 +311,19 @@ def get_model(dataset, model_type, item_count, batch_size, maxlen):
     return model
 
 def get_exp_name(dataset, model_type, batch_size, lr, maxlen, save=True):
-    extr_name = input('Please input the experiment name: ')
+    #extr_name = input('Please input the experiment name: ')
+    extr_name = args.extr_name
     para_name = '_'.join([dataset, model_type, 'b'+str(batch_size), 'lr'+str(lr), 'd'+str(args.embedding_dim), 'len'+str(maxlen)])
     exp_name = para_name + '_' + extr_name
 
     while os.path.exists('runs/' + exp_name) and save:
-        flag = input('The exp name already exists. Do you want to cover? (y/n)')
+        #flag = input('The exp name already exists. Do you want to cover? (y/n)')
+        flag = 'Y'
         if flag == 'y' or flag == 'Y':
             shutil.rmtree('runs/' + exp_name)
             break
         else:
-            extr_name = input('Please input the experiment name: ')
+            #extr_name = input('Please input the experiment name: ')
             exp_name = para_name + '_' + extr_name
 
     return exp_name
@@ -320,6 +446,31 @@ def test(
         metrics = evaluate_full(sess, test_data, model, best_model_path, batch_size, item_cate_map, save=False, coef=args.coef)
         print(', '.join(['test ' + key + ': %.6f' % value for key, value in metrics.items()]))
 
+def predict(
+        predict_file,
+        cate_file,
+        item_count,
+        dataset = "book",
+        batch_size = 128,
+        maxlen = 100,
+        model_type = 'DNN',
+        lr = 0.001
+):
+    exp_name = get_exp_name(dataset, model_type, batch_size, lr, maxlen, save=False)
+    best_model_path = "best_model/" + exp_name + '/'
+    gpu_options = tf.GPUOptions(allow_growth=True)
+    model = get_model(dataset, model_type, item_count, batch_size, maxlen)
+    item_cate_map = load_item_cate(cate_file)
+    predict_res_path = os.path.join(args.prefix, "{}_recall_predict_res.txt".format(args.dataset))
+
+    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
+        model.restore(sess, best_model_path)
+        
+        predict_data = DataIterator(predict_file, batch_size, maxlen, train_flag=3)
+        metrics = evaluate_full_predict(sess, predict_data, model, best_model_path, batch_size, item_cate_map, predict_res_path, save=False, coef=args.coef)
+        print(', '.join(['test ' + key + ': %.6f' % value for key, value in metrics.items()]))
+
+
 def output(
         item_count,
         dataset = "book",
@@ -363,11 +514,17 @@ if __name__ == '__main__':
         batch_size = 128
         maxlen = 20
         test_iter = 1000
+    elif args.dataset == 'Electronics':
+        path = args.prefix
+        item_count = 63002
+        batch_size = 128
+        maxlen = 20
+        test_iter = 1000
     
-    train_file = path + args.dataset + '_train.txt'
-    valid_file = path + args.dataset + '_valid.txt'
-    test_file = path + args.dataset + '_test.txt'
-    cate_file = path + args.dataset + '_item_cate.txt'
+    train_file = os.path.join(path, args.dataset + '_recall_train.txt')
+    valid_file = os.path.join(path, args.dataset + '_recall_valid.txt')
+    test_file = os.path.join(path, args.dataset + '_recall_test.txt')
+    cate_file = os.path.join(path, args.dataset + '_item_cate_kv.txt')
     dataset = args.dataset
 
     if args.p == 'train':
@@ -376,6 +533,9 @@ if __name__ == '__main__':
               model_type=args.model_type, lr=args.learning_rate, max_iter=args.max_iter, patience=args.patience)
     elif args.p == 'test':
         test(test_file=test_file, cate_file=cate_file, item_count=item_count, dataset=dataset, batch_size=batch_size, 
+             maxlen=maxlen, model_type=args.model_type, lr=args.learning_rate)
+    elif args.p == 'predict':
+        predict(predict_file=test_file, cate_file=cate_file, item_count=item_count, dataset=dataset, batch_size=batch_size, 
              maxlen=maxlen, model_type=args.model_type, lr=args.learning_rate)
     elif args.p == 'output':
         output(item_count=item_count, dataset=dataset, batch_size=batch_size, maxlen=maxlen, 
