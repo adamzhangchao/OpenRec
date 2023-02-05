@@ -55,7 +55,6 @@ class Model(object):
     hist_j =attention(j_emb, h_emb, self.sl)
     #-- attention end ---
     
-    # hist_j = tf.layers.batch_normalization(inputs = hist_j)
     hist_j = tf.layers.batch_normalization(inputs = hist_j, reuse=True)
     hist_j = tf.reshape(hist_j, [-1, hidden_units], name='hist_bn')
     hist_j = tf.layers.dense(hist_j, hidden_units, name='hist_fcn', reuse=True)
@@ -68,22 +67,19 @@ class Model(object):
     #-- fcn begin -------
     din_i = tf.concat([u_emb_i, i_emb, u_emb_i * i_emb], axis=-1)
     din_i = tf.layers.batch_normalization(inputs=din_i, name='b1')
-    d_layer_1_i = tf.layers.dense(din_i, 80, activation=tf.nn.sigmoid, name='f1')
+    #d_layer_1_i = tf.layers.dense(din_i, 80, activation=tf.nn.sigmoid, name='f1')
     #if u want try dice change sigmoid to None and add dice layer like following two lines. You can also find model_dice.py in this folder.
-    # d_layer_1_i = tf.layers.dense(din_i, 80, activation=None, name='f1')
-    # d_layer_1_i = dice(d_layer_1_i, name='dice_1_i')
-    d_layer_2_i = tf.layers.dense(d_layer_1_i, 40, activation=tf.nn.sigmoid, name='f2')
-    # d_layer_2_i = tf.layers.dense(d_layer_1_i, 40, activation=None, name='f2')
-    # d_layer_2_i = dice(d_layer_2_i, name='dice_2_i')
+    d_layer_1_i = tf.layers.dense(din_i, 80, activation=None, name='f1')
+    d_layer_1_i = dice(d_layer_1_i, name='dice_1')
+    d_layer_2_i = tf.layers.dense(d_layer_1_i, 40, activation=None, name='f2')
+    d_layer_2_i = dice(d_layer_2_i, name='dice_2')
     d_layer_3_i = tf.layers.dense(d_layer_2_i, 1, activation=None, name='f3')
     din_j = tf.concat([u_emb_j, j_emb, u_emb_j * j_emb], axis=-1)
     din_j = tf.layers.batch_normalization(inputs=din_j, name='b1', reuse=True)
-    d_layer_1_j = tf.layers.dense(din_j, 80, activation=tf.nn.sigmoid, name='f1', reuse=True)
-    # d_layer_1_j = tf.layers.dense(din_j, 80, activation=None, name='f1', reuse=True)
-    # d_layer_1_j = dice(d_layer_1_j, name='dice_1_j')
-    d_layer_2_j = tf.layers.dense(d_layer_1_j, 40, activation=tf.nn.sigmoid, name='f2', reuse=True)
-    # d_layer_2_j = tf.layers.dense(d_layer_1_j, 40, activation=None, name='f2', reuse=True)
-    # d_layer_2_j = dice(d_layer_2_j, name='dice_2_j')
+    d_layer_1_j = tf.layers.dense(din_j, 80, activation=None, name='f1', reuse=True)
+    d_layer_1_j = dice(d_layer_1_j, name='dice_1')
+    d_layer_2_j = tf.layers.dense(d_layer_1_j, 40, activation=None, name='f2', reuse=True)
+    d_layer_2_j = dice(d_layer_2_j, name='dice_2')
     d_layer_3_j = tf.layers.dense(d_layer_2_j, 1, activation=None, name='f3', reuse=True)
     d_layer_3_i = tf.reshape(d_layer_3_i, [-1])
     d_layer_3_j = tf.reshape(d_layer_3_j, [-1])
@@ -182,7 +178,14 @@ class Model(object):
         self.sl: uij[4],
         })
   
-
+  def predict(self, sess, uij):
+    return sess.run(self.score_i, feed_dict = {
+        self.u: uij[0],
+        self.i: uij[1],
+        self.j: uij[2],
+        self.hist_i: uij[3],
+        self.sl: uij[4],
+    })
   def save(self, sess, path):
     saver = tf.train.Saver()
     saver.save(sess, save_path=path)
