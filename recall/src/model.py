@@ -17,7 +17,6 @@ class Model(object):
             self.uid_batch_ph = tf.placeholder(tf.int32, [None, ], name='uid_batch_ph')
             self.mid_batch_ph = tf.placeholder(tf.int32, [None, ], name='mid_batch_ph')
             self.mask = tf.placeholder(tf.float32, [None, None], name='mask_batch_ph')
-            self.target_ph = tf.placeholder(tf.float32, [None, 2], name='target_ph')
             self.lr = tf.placeholder(tf.float64, [])
 
         self.mask_length = tf.cast(tf.reduce_sum(self.mask, -1), dtype=tf.int32)
